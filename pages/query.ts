@@ -1,37 +1,44 @@
-import type { SharkKind, SharkSpec } from "../src";
+import type { KoiKind, KoiSpec } from "../src";
 
-/** ?sharks=thresher,hammerhead,mako,nurse — first is biggest, the rest step down. */
-export function sharksFromQuery(): SharkSpec[] | undefined {
-  const kinds = new URLSearchParams(location.search).get("sharks")?.split(",").filter(Boolean) as SharkKind[] | undefined;
-  return kinds?.map((kind, i) => ({ kind, size: 1 - i * 0.1 }));
+/**
+ * ?koi=kohaku,showa,butterfly-ogon — first is biggest, the rest step down.
+ * A `butterfly-` prefix gives that koi long, flowing fins.
+ */
+export function koiFromQuery(): KoiSpec[] | undefined {
+  const names = new URLSearchParams(location.search).get("koi")?.split(",").filter(Boolean);
+  return names?.map((name, i) => {
+    const long = name.startsWith("butterfly-");
+    return { kind: (long ? name.slice("butterfly-".length) : name) as KoiKind, size: 1 - i * 0.1, fins: long ? "long" : "short" };
+  });
 }
 
 export const flag = (name: string) => new URLSearchParams(location.search).has(name);
 
 /**
- * The haj chat's first screen: its roster was great hammerhead, hammerhead, tiger, zebra. Here the zebra
- * gives way to two hammerheads, two whale sharks join, and a thresher fills out the cast.
- * Sizes sit under the haj values so seven sharks fit where four did, and the chat pages keep them all in frame.
+ * The chat hero scene: a mixed pond of seven, two of them butterfly koi trailing long fins.
+ * Sizes stay small enough that all seven fit, and the chat pages keep them all in frame.
  */
-export const HERO_SHARKS: SharkSpec[] = [
-  { kind: "whale", size: 1.05 },
-  { kind: "greathammer", size: 0.95 },
-  { kind: "whale", size: 0.88 },
-  { kind: "thresher", size: 0.85 },
-  { kind: "hammerhead", size: 0.85 },
-  { kind: "tiger", size: 0.78 },
-  { kind: "hammerhead", size: 0.76 },
+export const HERO_KOI: KoiSpec[] = [
+  { kind: "kohaku", size: 1.05 },
+  { kind: "showa", size: 0.95 },
+  { kind: "ogon", size: 0.9, fins: "long" },
+  { kind: "sanke", size: 0.86 },
+  { kind: "tancho", size: 0.82 },
+  { kind: "asagi", size: 0.78 },
+  { kind: "platinum", size: 0.74, fins: "long" },
 ];
 
-/** Every species once (?all), sized so the big ones read as nearer. */
-export const ALL_SHARKS: SharkSpec[] = [
-  { kind: "whale", size: 1.3 },
-  { kind: "greathammer", size: 1.1 },
-  { kind: "hammerhead", size: 1 },
-  { kind: "tiger", size: 0.95 },
-  { kind: "thresher", size: 0.9 },
-  { kind: "classic", size: 0.85 },
-  { kind: "mako", size: 0.8 },
-  { kind: "nurse", size: 0.75 },
-  { kind: "zebra", size: 0.7 },
+/** Every variety once (?all), sized so the big ones read as nearer the surface. */
+export const ALL_KOI: KoiSpec[] = [
+  { kind: "kohaku", size: 1.2 },
+  { kind: "sanke", size: 1.1 },
+  { kind: "showa", size: 1.05 },
+  { kind: "tancho", size: 1 },
+  { kind: "utsuri", size: 0.95 },
+  { kind: "ogon", size: 0.9, fins: "long" },
+  { kind: "platinum", size: 0.85 },
+  { kind: "kigoi", size: 0.82 },
+  { kind: "chagoi", size: 0.8 },
+  { kind: "asagi", size: 0.76 },
+  { kind: "shusui", size: 0.72 },
 ];

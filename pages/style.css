@@ -177,7 +177,7 @@ footer.meta { border-top: 1px solid var(--hairline); border-bottom: 0; }
   color: var(--ink);
 }
 
-/* Species cells: one shark each, hairlines between them whatever the column count. */
+/* Variety cells: one koi each, hairlines between them whatever the column count. */
 .stage.cells {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -189,6 +189,11 @@ footer.meta { border-top: 1px solid var(--hairline); border-bottom: 0; }
   position: relative;
   aspect-ratio: 3 / 2;
   background: var(--stage);
+}
+/* Eleven cells leave the last row short in three columns and in two; the last one spans the gap at the same height. */
+.cells .cell:last-child {
+  grid-column: span 2;
+  aspect-ratio: 3 / 1;
 }
 
 @media (max-width: 720px) {

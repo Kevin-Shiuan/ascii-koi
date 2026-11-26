@@ -1,7 +1,7 @@
-import { OceanEngine, type OceanOptions, type SharkSpec } from "../src";
+import { PondEngine, type PondOptions, type KoiSpec } from "../src";
 
-export interface Figure extends OceanOptions {
-  sharks?: SharkSpec[];
+export interface Figure extends PondOptions {
+  koi?: KoiSpec[];
   /** Ripples follow the cursor, so the wake field can be drawn on. */
   draw?: boolean;
   /** A drop lands somewhere every second or so, so the field is never blank. */
@@ -10,18 +10,18 @@ export interface Figure extends OceanOptions {
 
 /** One engine per `<canvas data-fig>`; off-screen figures pause themselves. */
 export function mountFigures(figures: Record<string, Figure>) {
-  const engines: Record<string, OceanEngine> = {};
+  const engines: Record<string, PondEngine> = {};
   for (const canvas of document.querySelectorAll<HTMLCanvasElement>("canvas[data-fig]")) {
     const id = canvas.dataset.fig ?? "";
     const fig = figures[id];
     if (!fig) continue;
-    const { sharks, draw, drip, ...options } = fig;
-    const engine = new OceanEngine(canvas, sharks, options);
+    const { koi, draw, drip, ...options } = fig;
+    const engine = new PondEngine(canvas, koi, options);
     engines[id] = engine;
     if (drip) {
       setInterval(() => {
         const r = canvas.getBoundingClientRect();
-        engine.world.splash(r.width * (0.1 + 0.8 * Math.random()), r.height * (0.1 + 0.8 * Math.random()));
+        engine.world.ripple(r.width * (0.1 + 0.8 * Math.random()), r.height * (0.1 + 0.8 * Math.random()));
       }, 1400);
     }
     if (!draw) continue;
@@ -33,7 +33,7 @@ export function mountFigures(figures: Record<string, Figure>) {
         if (now - last < 90) return;
         last = now;
         const r = canvas.getBoundingClientRect();
-        engine.world.splash(e.clientX - r.left, e.clientY - r.top);
+        engine.world.ripple(e.clientX - r.left, e.clientY - r.top);
       },
       { passive: true },
     );

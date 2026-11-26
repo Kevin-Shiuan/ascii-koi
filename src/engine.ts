@@ -1,25 +1,27 @@
 import { Life } from "./life";
 import { AsciiRenderer, type Stage, type Theme } from "./renderer";
-import { World, type SharkSpec } from "./world";
+import { World, type KoiSpec } from "./world";
 
 const STEP = 1 / 60;
 const MAX_STEPS = 4;
 
-export interface OceanOptions {
-  /** Fish population. 0 leaves only the sharks. Default: scaled to the canvas area. */
+export interface PondOptions {
+  /** Fish population. 0 leaves only the koi. Default: scaled to the canvas area. */
   fish?: number;
-  /** Black stage (default) or paper. */
+  /** Dark pond (default) or paper. */
   theme?: Theme;
-  /** How much of each shark to draw. The blueprint pages step through the stages. */
+  /** How much of each koi to draw. The blueprint pages step through the stages. */
   stage?: Stage;
-  /** Fish flee the cursor and a click splashes. Default true. */
+  /** Fish flee the cursor, and a click splashes and drops food. Default true. */
   pointer?: boolean;
   /** Settle the sim, draw one frame, and stop. Reduced-motion users get this regardless. */
   still?: boolean;
   /** Keep a soft ellipse in the middle clear for a headline. Default true. */
   clearCentre?: boolean;
-  /** Keep every shark wholly inside the canvas. Default false: bodies may dip off the edges. */
+  /** Keep every koi wholly inside the canvas. Default false: bodies may dip off the edges. */
   contain?: boolean;
+  /** Scatter a few pellets now and then so the koi feed on their own. Default true. */
+  feed?: boolean;
   /** Run a Game of Life on the same cells, seeded by this function on every resize. */
   life?: (life: Life) => void;
 }
@@ -28,7 +30,7 @@ export interface OceanOptions {
  * Wires World + AsciiRenderer to a canvas: fixed-timestep loop, resize,
  * pointer input, pausing off-screen, and prefers-reduced-motion.
  */
-export class OceanEngine {
+export class PondEngine {
   readonly world: World;
   readonly renderer: AsciiRenderer;
   private raf = 0;
@@ -42,8 +44,8 @@ export class OceanEngine {
   private intersectionObserver: IntersectionObserver;
   private disposed = false;
 
-  constructor(private canvas: HTMLCanvasElement, sharks?: SharkSpec[], options: OceanOptions = {}) {
-    this.world = new World(sharks, options.fish, options.clearCentre ?? true, options.contain ?? false);
+  constructor(private canvas: HTMLCanvasElement, koi?: KoiSpec[], options: PondOptions = {}) {
+    this.world = new World(koi, options.fish, options.clearCentre ?? true, options.contain ?? false, options.feed ?? true);
     this.renderer = new AsciiRenderer(canvas);
     this.renderer.setFontFamily(getComputedStyle(canvas).fontFamily);
     this.renderer.setTheme(options.theme ?? "dark");

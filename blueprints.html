@@ -3,14 +3,14 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>ascii sharks · blueprints</title>
+    <title>ascii koi · blueprints</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link href="https://fonts.googleapis.com/css2?family=Geist+Mono:wght@400;600&family=Montserrat:wght@200;300;400&display=swap" rel="stylesheet" />
     <link rel="stylesheet" href="/pages/style.css" />
   </head>
   <body>
     <header class="meta">
-      <span>ascii sharks · blueprints · 10 fig.</span>
+      <span>ascii koi · blueprints · 10 fig.</span>
       <nav>
         <a href="/">Index</a>
         <a href="/light">Light</a>
@@ -20,8 +20,8 @@
     </header>
     <section class="intro">
       <span class="mono-label">Blueprints</span>
-      <h1>From Life to sharks.</h1>
-      <p class="lede">Ten frames on the same grid, from Conway's rules to a hunting shark.</p>
+      <h1>From Life to koi.</h1>
+      <p class="lede">Ten frames on the same grid, from Conway's rules to a feeding koi.</p>
     </section>
     <main class="board">
       <figure class="plate">
@@ -55,7 +55,7 @@
             <h2>Three rules, no leader.</h2>
           </div>
           <div class="note">
-            <p>Rules move from cells to animals. Keep your distance. Match your neighbours. Drift to the centre. Species differ only in the weights: sardines mill, anchovies ribbon.</p>
+            <p>Rules move from cells to animals. Keep your distance. Match your neighbours. Drift to the centre. Species differ only in the weights: medaka mill, minnows ribbon, tadpoles swarm.</p>
           </div>
         </figcaption>
         <div class="stage"><canvas data-fig="agents" aria-hidden="true"></canvas><span class="mono-label tag" data-tag="agents">Fig. 03 · Agents · 1987</span></div>
@@ -67,7 +67,7 @@
             <h2>Twenty points.</h2>
           </div>
           <div class="note">
-            <p>Only the snout is steered. Each point follows the one ahead, with a stiffness limit per joint so the body bends into a C and never folds.</p>
+            <p>Only the head is steered. Each point follows the one ahead, with a stiffness limit per joint so the body bends into a C and never folds.</p>
           </div>
         </figcaption>
         <div class="stage"><canvas data-fig="spine" aria-hidden="true"></canvas><span class="mono-label tag" data-tag="spine">Fig. 04 · Spine</span></div>
@@ -76,10 +76,10 @@
         <figcaption>
           <div class="head">
             <span class="mono-label">Fig. 05 · Silhouette</span>
-            <h2>A curve and four triangles.</h2>
+            <h2>A curve, two paddles, a fan.</h2>
           </div>
           <div class="note">
-            <p>Half-width along the spine, triangles for the fins. Five samples per cell decide skin or edge, so the outline is anti-aliased with punctuation.</p>
+            <p>Half-width along the spine: blunt head, full shoulders, a narrow stalk. Rounded pectorals row at a glide and fold back at speed. The tail is a forked fan. Five samples per cell decide skin or edge, so the outline is anti-aliased with punctuation.</p>
           </div>
         </figcaption>
         <div class="stage"><canvas data-fig="silhouette" aria-hidden="true"></canvas><span class="mono-label tag" data-tag="silhouette">Fig. 05 · Silhouette</span></div>
@@ -91,7 +91,7 @@
             <h2>Lit from the top left.</h2>
           </div>
           <div class="note">
-            <p>A rounded back. Flanks fall into shadow. The dorsal catches the light.</p>
+            <p>A rounded back. Flanks fall into shadow. The dorsal runs down the spine as a darker line.</p>
           </div>
         </figcaption>
         <div class="stage"><canvas data-fig="shaded" aria-hidden="true"></canvas><span class="mono-label tag" data-tag="shaded">Fig. 06 · Shade</span></div>
@@ -103,10 +103,10 @@
             <h2>Density is light.</h2>
           </div>
           <div class="note">
-            <p>Each block gets a character from the ramp. Sparse where lit, dense in shadow, so texture agrees with the light.</p>
+            <p>Each block gets a character from the ramp. Sparse where lit, dense in shadow, so texture agrees with the light. Fin rays are lines, each turned along its ray.</p>
             <div class="ramp" aria-label="Glyph ramp from light to shadow">
               <span class="mono-label">Light</span>
-              <code>: ; t % S X 8 # @</code>
+              <code>. : ; = + x * % #</code>
               <span class="mono-label">Shadow</span>
             </div>
           </div>
@@ -116,53 +116,55 @@
       <figure class="plate">
         <figcaption>
           <div class="head">
-            <span class="mono-label">Fig. 08 · Species</span>
-            <h2>Nine curves.</h2>
+            <span class="mono-label">Fig. 08 · Varieties</span>
+            <h2>Eleven patterns, one body.</h2>
           </div>
           <div class="note">
-            <p>Species differ only in the half-width curve, fin layout, head, markings and tint.</p>
+            <p>Every variety shares the same curve. Only the colour differs: red, black and white patches placed per koi, a net of scales on asagi and chagoi, a metallic shimmer on ogon, a row of mirror scales down the shusui back.</p>
           </div>
         </figcaption>
         <div class="stage cells">
-          <div class="cell"><canvas data-fig="species-classic" aria-hidden="true"></canvas><span class="mono-label tag">classic</span></div>
-          <div class="cell"><canvas data-fig="species-hammerhead" aria-hidden="true"></canvas><span class="mono-label tag">hammerhead</span></div>
-          <div class="cell"><canvas data-fig="species-greathammer" aria-hidden="true"></canvas><span class="mono-label tag">great hammerhead</span></div>
-          <div class="cell"><canvas data-fig="species-tiger" aria-hidden="true"></canvas><span class="mono-label tag">tiger</span></div>
-          <div class="cell"><canvas data-fig="species-zebra" aria-hidden="true"></canvas><span class="mono-label tag">zebra</span></div>
-          <div class="cell"><canvas data-fig="species-mako" aria-hidden="true"></canvas><span class="mono-label tag">mako</span></div>
-          <div class="cell"><canvas data-fig="species-thresher" aria-hidden="true"></canvas><span class="mono-label tag">thresher</span></div>
-          <div class="cell"><canvas data-fig="species-nurse" aria-hidden="true"></canvas><span class="mono-label tag">nurse</span></div>
-          <div class="cell"><canvas data-fig="species-whale" aria-hidden="true"></canvas><span class="mono-label tag">whale shark</span></div>
+          <div class="cell"><canvas data-fig="species-kohaku" aria-hidden="true"></canvas><span class="mono-label tag">kohaku</span></div>
+          <div class="cell"><canvas data-fig="species-tancho" aria-hidden="true"></canvas><span class="mono-label tag">tancho</span></div>
+          <div class="cell"><canvas data-fig="species-sanke" aria-hidden="true"></canvas><span class="mono-label tag">taisho sanke</span></div>
+          <div class="cell"><canvas data-fig="species-showa" aria-hidden="true"></canvas><span class="mono-label tag">showa</span></div>
+          <div class="cell"><canvas data-fig="species-utsuri" aria-hidden="true"></canvas><span class="mono-label tag">shiro utsuri</span></div>
+          <div class="cell"><canvas data-fig="species-ogon" aria-hidden="true"></canvas><span class="mono-label tag">ogon</span></div>
+          <div class="cell"><canvas data-fig="species-platinum" aria-hidden="true"></canvas><span class="mono-label tag">platinum ogon</span></div>
+          <div class="cell"><canvas data-fig="species-kigoi" aria-hidden="true"></canvas><span class="mono-label tag">kigoi</span></div>
+          <div class="cell"><canvas data-fig="species-chagoi" aria-hidden="true"></canvas><span class="mono-label tag">chagoi</span></div>
+          <div class="cell"><canvas data-fig="species-asagi" aria-hidden="true"></canvas><span class="mono-label tag">asagi</span></div>
+          <div class="cell"><canvas data-fig="species-shusui" aria-hidden="true"></canvas><span class="mono-label tag">shusui</span></div>
         </div>
       </figure>
       <figure class="plate">
         <figcaption>
           <div class="head">
-            <span class="mono-label">Fig. 09 · Hunger</span>
-            <h2>The straggler gets taken.</h2>
+            <span class="mono-label">Fig. 09 · Feeding</span>
+            <h2>The nearest pellet ahead.</h2>
           </div>
           <div class="note">
-            <p>A shark scores every fish in its forward cone by distance and by how crowded its neighbourhood is, then takes the sparse one. Eaten fish return as a new school from the edge.</p>
+            <p>Hunger builds while a koi cruises. It scores each pellet by distance and by how far it would have to turn, then takes the cheapest. A gulp leaves a ring on the water. Click to drop a pinch.</p>
           </div>
         </figcaption>
-        <div class="stage"><canvas data-fig="hunger" aria-hidden="true"></canvas><span class="mono-label tag" data-tag="hunger">Fig. 09 · Hunger</span></div>
+        <div class="stage"><canvas data-fig="feeding" aria-hidden="true"></canvas><span class="mono-label tag" data-tag="feeding">Fig. 09 · Feeding</span></div>
       </figure>
       <figure class="plate">
         <figcaption>
           <div class="head">
-            <span class="mono-label">Fig. 10 · Life, then sharks</span>
+            <span class="mono-label">Fig. 10 · Life, then koi</span>
             <h2>Same water.</h2>
           </div>
           <div class="note">
-            <p>Life runs on the board. The sharks fade in, their bodies clear cells, and their wake seeds new ones. The continuous automaton feeds the discrete one.</p>
+            <p>Life runs on the board. The koi fade in, their bodies clear cells, and their wake seeds new ones. The continuous automaton feeds the discrete one.</p>
           </div>
         </figcaption>
-        <div class="stage"><canvas data-fig="bleed" aria-hidden="true"></canvas><span class="mono-label tag" data-tag="bleed">Fig. 10 · Life, then sharks</span></div>
+        <div class="stage"><canvas data-fig="bleed" aria-hidden="true"></canvas><span class="mono-label tag" data-tag="bleed">Fig. 10 · Life, then koi</span></div>
       </figure>
     </main>
     <footer class="meta">
-      <span>MIT · zero dependencies</span>
-      <nav><a href="https://github.com/stackedlol/ascii-sharks">Source</a></nav>
+      <span>MIT · zero dependencies · a fork of <a href="https://github.com/stackedlol/ascii-sharks">ascii sharks</a></span>
+      <nav><a href="https://github.com/Kevin-Shiuan/ascii-koi">Source</a></nav>
     </footer>
     <script type="module" src="/pages/blueprints.ts"></script>
   </body>

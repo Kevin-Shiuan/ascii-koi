@@ -1,34 +1,46 @@
 /**
- * Artificial-life sim for the hero: tiny fish schools and the sharks that hunt them.
+ * Artificial-life sim for the hero: a koi pond, with schools of tiny fish weaving between the koi.
  *
  * Fish: Reynolds boids (separation / alignment / cohesion) in Couzin-style
  * zones, with a blind spot behind each fish. Alarm spreads from fish to fish
  * through the school (a "wave of agitation"), so a whole school bolts even
- * when only its edge can see the shark. Fleeing fish break sideways around the
- * shark's path, which gives the fountain effect seen in real bait balls.
+ * when only its edge can see a koi coming. Fleeing fish break sideways around
+ * the koi's path, the same fountain effect seen in real bait balls.
  *
- * Sharks: Reynolds steering (wander + pursuit + separation) on a
- * follow-the-leader spine. Hunger builds over time and drops when they eat.
- * They prefer fish in sparse spots, since dense schools confuse predators,
- * so stragglers get picked off. Eaten fish come back later as new schools
- * swimming in from the edges, which keeps the population steady.
+ * Koi: Reynolds steering (wander + seek + separation) on a follow-the-leader
+ * spine. They cruise a lazy circuit, easing between a slow glide and a few
+ * strong strokes. Hunger builds over time; food pellets scattered on the
+ * surface (a click, or the keeper now and then) draw the nearest hungry koi,
+ * which gulp them down and leave a ring on the water.
  */
 import { angleDiff, clamp, current, rand, randInt, TAU } from "./math";
 import { pickSpecies, SPECIES } from "./species";
 
-export const SHARK_NODES = 20;
+export const KOI_NODES = 20;
 
-export type SharkKind = "classic" | "hammerhead" | "zebra" | "tiger" | "greathammer" | "mako" | "thresher" | "nurse" | "whale";
+/** Koi varieties: the colour and pattern on the body. The body shape is the same for all of them. */
+export type KoiKind =
+  | "kohaku"
+  | "tancho"
+  | "sanke"
+  | "showa"
+  | "utsuri"
+  | "ogon"
+  | "platinum"
+  | "kigoi"
+  | "chagoi"
+  | "asagi"
+  | "shusui";
 
-/** Which sharks to put in the water; size is relative to the biggest. */
-export type SharkSpec = { kind: SharkKind; size: number };
+/** Which koi to put in the pond; size is relative to the biggest. Long fins make a butterfly koi. */
+export type KoiSpec = { kind: KoiKind; size: number; fins?: "short" | "long" };
 
-// The landing hero: four of the same shark at different depths.
-const DEFAULT_SHARKS: SharkSpec[] = [
-  { kind: "classic", size: 1 },
-  { kind: "classic", size: 0.7 },
-  { kind: "classic", size: 0.84 },
-  { kind: "classic", size: 0.77 },
+// The landing hero: a small mixed pond, the big kohaku nearest the surface.
+const DEFAULT_KOI: KoiSpec[] = [
+  { kind: "kohaku", size: 1 },
+  { kind: "ogon", size: 0.8 },
+  { kind: "sanke", size: 0.88 },
+  { kind: "showa", size: 0.76 },
 ];
 
 export interface Fish {
@@ -40,7 +52,6 @@ export interface Fish {
   /** 0 calm → 1 panicking. Spreads to neighbours. */
   alarm: number;
   alive: boolean;
-  respawnAt: number;
   /** Tail-beat phase. */
   phase: number;
   /** Smoothed angular velocity (rad/s); hard turns flash silver. */
@@ -51,9 +62,10 @@ export interface Fish {
   millDir: 1 | -1;
 }
 
-export interface Shark {
+export interface Koi {
   id: number;
-  kind: SharkKind;
+  kind: KoiKind;
+  fins: "short" | "long";
   length: number;
   /** Spine positions, snout first: [x0, y0, x1, y1, ...]. */
   nodes: Float32Array;
@@ -61,16 +73,27 @@ export interface Shark {
   speed: number;
   /** Tail-beat phase; drives the body wave in the renderer. */
   phase: number;
-  /** Smoothed angular velocity (rad/s); the shark banks its fins into turns. */
+  /** Smoothed angular velocity (rad/s); the pectorals flare into turns. */
   turn: number;
   hunger: number;
   wander: number;
   orbitDir: 1 | -1;
   orbitRadius: number;
-  target: Fish | null;
+  target: Pellet | null;
   retargetAt: number;
   /** 0 far / dim → 1 near / bright. */
   depth: number;
+}
+
+/** A food pellet floating on the surface. */
+export interface Pellet {
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
+  alive: boolean;
+  /** When it landed; old pellets go soggy and sink out of sight. */
+  born: number;
 }
 
 export interface WorldEvent {
@@ -84,13 +107,17 @@ const FISH_ALIGN_K = 1.4;
 const FISH_COHESION_K = 1;
 const FISH_FLEE_K = 1100;
 const BLIND_COS = -0.6; // ~127° either side of the heading is visible
+/** Seconds a pellet floats before it sinks. */
+export const PELLET_LIFE = 40;
+const MAX_PELLETS = 80;
 
 export class World {
   width = 0;
   height = 0;
   time = 0;
   fish: Fish[] = [];
-  sharks: Shark[] = [];
+  koi: Koi[] = [];
+  pellets: Pellet[] = [];
   events: WorldEvent[] = [];
   pointer = { x: 0, y: 0, active: false };
 
@@ -105,22 +132,24 @@ export class World {
   private bucketHead = new Int32Array(0);
   private bucketCount = new Uint16Array(0);
   private bucketNext = new Int32Array(0);
-  private lastSpawn = 0;
+  private nextFeed = 6;
   private tmp = { x: 0, y: 0 };
 
   /**
    * fishCount overrides the area-based population (the sidebar wants a single small school).
    * clearCentre keeps a soft ellipse in the middle free for a headline; off for a plain tank.
-   * contain keeps every shark wholly in frame instead of letting bodies dip off the edges.
+   * contain keeps every koi wholly in frame instead of letting bodies dip off the edges.
+   * feed has the keeper scatter a few pellets now and then, so the koi feed without a click.
    */
   constructor(
-    private sharkSpecs: SharkSpec[] = DEFAULT_SHARKS,
+    private koiSpecs: KoiSpec[] = DEFAULT_KOI,
     private fishCount?: number,
     private clearCentre = true,
     private contain = false,
+    private feed = true,
   ) {}
 
-  /** How far every part of a contained shark keeps from the frame: fins and tail lobes reach about this far out. */
+  /** How far every part of a contained koi keeps from the frame: fins and tail lobes reach about this far out. */
   private insetFor(length: number) {
     return length * 0.3;
   }
@@ -131,7 +160,7 @@ export class World {
     let maxX = -Infinity;
     let minY = Infinity;
     let maxY = -Infinity;
-    for (let k = 0; k < SHARK_NODES; k++) {
+    for (let k = 0; k < KOI_NODES; k++) {
       const x = nodes[k * 2];
       const y = nodes[k * 2 + 1];
       if (x < minX) minX = x;
@@ -142,7 +171,7 @@ export class World {
     const sx = minX < inset ? inset - minX : maxX > this.width - inset ? this.width - inset - maxX : 0;
     const sy = minY < inset ? inset - minY : maxY > this.height - inset ? this.height - inset - maxY : 0;
     if (sx === 0 && sy === 0) return;
-    for (let k = 0; k < SHARK_NODES; k++) {
+    for (let k = 0; k < KOI_NODES; k++) {
       nodes[k * 2] += sx;
       nodes[k * 2 + 1] += sy;
     }
@@ -171,37 +200,38 @@ export class World {
   seed() {
     const { width: W, height: H } = this;
     const minSide = Math.min(W, H);
-    const baseLength = clamp(minSide * 0.44, 170, 430);
-    const sharkCount = this.sharkSpecs.length;
+    const baseLength = clamp(minSide * 0.42, 170, 420);
+    const koiCount = this.koiSpecs.length;
 
-    this.sharks = [];
-    for (let i = 0; i < sharkCount; i++) {
-      const { kind, size } = this.sharkSpecs[i];
+    this.koi = [];
+    for (let i = 0; i < koiCount; i++) {
+      const { kind, size, fins = "short" } = this.koiSpecs[i];
       const length = baseLength * size;
       const inset = this.insetFor(length);
-      // Contained sharks orbit inside the inset, so the circuit itself never asks them to leave.
+      // Contained koi circle inside the inset, so the circuit itself never asks them to leave.
       const orbitRadius = this.contain
         ? Math.max(minSide * 0.1, Math.min(minSide * rand(0.28, 0.4), H / 2 - inset - length * 0.1, (W / 2 - inset) / ((W / minSide) * 0.9)))
         : minSide * rand(0.28, 0.4);
-      const a = (i / sharkCount) * TAU + rand(-0.4, 0.4);
+      const a = (i / koiCount) * TAU + rand(-0.4, 0.4);
       const orbitDir: 1 | -1 = i % 2 === 0 ? 1 : -1;
       const x = W / 2 + Math.cos(a) * orbitRadius * (W / minSide) * 0.9;
       const y = H / 2 + Math.sin(a) * orbitRadius;
       const heading = a + (orbitDir * Math.PI) / 2;
-      const nodes = new Float32Array(SHARK_NODES * 2);
-      const seg = length / (SHARK_NODES - 1);
-      for (let n = 0; n < SHARK_NODES; n++) {
+      const nodes = new Float32Array(KOI_NODES * 2);
+      const seg = length / (KOI_NODES - 1);
+      for (let n = 0; n < KOI_NODES; n++) {
         nodes[n * 2] = x - Math.cos(heading) * seg * n;
         nodes[n * 2 + 1] = y - Math.sin(heading) * seg * n;
       }
       if (this.contain) this.fitInFrame(nodes, inset);
-      this.sharks.push({
+      this.koi.push({
         id: i + 1,
         kind,
+        fins,
         length,
         nodes,
         heading,
-        speed: 30,
+        speed: 20,
         phase: rand(0, TAU),
         turn: 0,
         hunger: rand(0.25, 0.75),
@@ -213,8 +243,8 @@ export class World {
         depth: clamp(size, 0, 1),
       });
     }
-    // Smaller (farther) sharks draw first so the big one swims over them.
-    this.sharks.sort((a, b) => a.length - b.length);
+    // Smaller (deeper) koi draw first so the big one swims over them.
+    this.koi.sort((a, b) => a.length - b.length);
 
     const total = this.fishCount ?? clamp(Math.round((W * H) / 4400), 85, 340);
     this.fish = [];
@@ -236,7 +266,6 @@ export class World {
           species,
           alarm: 0,
           alive: true,
-          respawnAt: 0,
           phase: rand(0, TAU),
           turn: 0,
           depth: rand(0.55, 1),
@@ -245,9 +274,17 @@ export class World {
       }
     }
     this.bucketNext = new Int32Array(this.fish.length);
+    this.pellets = [];
   }
 
+  /** A click on the water: a ripple, and a pinch of food lands. */
   splash(x: number, y: number) {
+    this.ripple(x, y);
+    this.scatter(x, y, randInt(4, 7));
+  }
+
+  /** A ring on the water that sends the small fish bolting, with no food. */
+  ripple(x: number, y: number) {
     this.events.push({ kind: "splash", x, y });
     const r = 240;
     for (const f of this.fish) {
@@ -264,12 +301,30 @@ export class World {
     }
   }
 
+  /** Drop `count` pellets around (x, y), each with a little outward drift. */
+  scatter(x: number, y: number, count: number) {
+    for (let i = 0; i < count; i++) {
+      const a = rand(0, TAU);
+      const d = rand(4, 34);
+      const pellet: Pellet = {
+        x: clamp(x + Math.cos(a) * d, 4, this.width - 4),
+        y: clamp(y + Math.sin(a) * d * 0.8, 4, this.height - 4),
+        vx: Math.cos(a) * rand(4, 14),
+        vy: Math.sin(a) * rand(4, 14),
+        alive: true,
+        born: this.time,
+      };
+      if (this.pellets.length >= MAX_PELLETS) this.pellets.shift();
+      this.pellets.push(pellet);
+    }
+  }
+
   step(dt: number) {
     this.time += dt;
     this.rebuildHash();
     this.stepFish(dt);
-    this.stepSharks(dt);
-    this.respawn();
+    this.stepPellets(dt);
+    this.stepKoi(dt);
   }
 
   private rebuildHash() {
@@ -305,7 +360,7 @@ export class World {
   }
 
   private stepFish(dt: number) {
-    const { fish, sharks, pointer, width: W, height: H, time } = this;
+    const { fish, koi, pointer, width: W, height: H, time } = this;
     const R = this.perception;
     const R2 = R * R;
     const foreignSep = this.foreignSep;
@@ -323,7 +378,7 @@ export class World {
       if (!f.alive) continue;
       const sp = SPECIES[f.species];
       // Alarmed fish want more room: the school flashes apart around a
-      // shark and closes back up once the threat fades.
+      // koi and closes back up once the threat fades.
       const spread = 1 + 1.8 * f.alarm;
       const sepX = this.sepX[f.species] * spread;
       const sepY = this.sepY[f.species] * spread;
@@ -404,17 +459,18 @@ export class World {
         }
       }
 
-      // Predators. Distance is measured to the nearest point along the front
-      // half of the shark, so fish also give the flanks a wide berth.
+      // Koi. They don't hunt the small fish, but a big body coming through still
+      // parts a school. Distance is measured to the nearest point along the front
+      // half of the koi, so fish also give the flanks a berth.
       let fear = 0;
-      for (const sh of sharks) {
-        const fearR = sh.length * 0.6 + 60;
+      for (const k of koi) {
+        const fearR = k.length * 0.45 + 40;
         let best = Infinity;
         let bx = 0;
         let by = 0;
-        for (let k = 0; k <= 12; k += 3) {
-          const nx = sh.nodes[k * 2];
-          const ny = sh.nodes[k * 2 + 1];
+        for (let j = 0; j <= 12; j += 3) {
+          const nx = k.nodes[j * 2];
+          const ny = k.nodes[j * 2 + 1];
           const d2 = (f.x - nx) ** 2 + (f.y - ny) ** 2;
           if (d2 < best) {
             best = d2;
@@ -425,16 +481,16 @@ export class World {
         const d = Math.sqrt(best);
         if (d >= fearR || d < 1e-3) continue;
         let w = 1 - d / fearR;
-        w *= w;
+        w *= w * 0.6;
         const awayX = (f.x - bx) / d;
         const awayY = (f.y - by) / d;
-        // Fountain effect: break to whichever side of the shark's path you're on.
-        const shx = Math.cos(sh.heading);
-        const shy = Math.sin(sh.heading);
-        const side = shx * (f.y - sh.nodes[1]) - shy * (f.x - sh.nodes[0]) >= 0 ? 1 : -1;
-        ax += (awayX * 0.7 - shy * side * 0.9) * FISH_FLEE_K * w;
-        ay += (awayY * 0.7 + shx * side * 0.9) * FISH_FLEE_K * w;
-        fear = Math.max(fear, Math.sqrt(w));
+        // Fountain effect: break to whichever side of the koi's path you're on.
+        const khx = Math.cos(k.heading);
+        const khy = Math.sin(k.heading);
+        const side = khx * (f.y - k.nodes[1]) - khy * (f.x - k.nodes[0]) >= 0 ? 1 : -1;
+        ax += (awayX * 0.7 - khy * side * 0.9) * FISH_FLEE_K * w;
+        ay += (awayY * 0.7 + khx * side * 0.9) * FISH_FLEE_K * w;
+        fear = Math.max(fear, Math.sqrt(w) * 0.7);
       }
 
       if (pointer.active) {
@@ -495,68 +551,107 @@ export class World {
     }
   }
 
-  private stepSharks(dt: number) {
-    const { sharks, width: W, height: H, time } = this;
+  /** Pellets drift on the current, slow to a float, and sink once they go soggy. */
+  private stepPellets(dt: number) {
+    const { time, width: W, height: H } = this;
+    const cur = this.tmp;
+    const drag = Math.exp(-dt * 1.8);
+    let alive = 0;
+    for (const p of this.pellets) {
+      if (!p.alive) continue;
+      if (time - p.born > PELLET_LIFE) {
+        p.alive = false;
+        continue;
+      }
+      current(p.x, p.y, time, cur);
+      p.vx = p.vx * drag + cur.x * 0.12 * dt * 6;
+      p.vy = p.vy * drag + cur.y * 0.12 * dt * 6;
+      p.x = clamp(p.x + p.vx * dt, 2, W - 2);
+      p.y = clamp(p.y + p.vy * dt, 2, H - 2);
+      alive++;
+    }
+    if (alive === 0 && this.pellets.length) this.pellets.length = 0;
+
+    // The keeper: when the water has been empty a while, a pinch of food lands somewhere off the headline.
+    if (this.feed && this.koi.length && time >= this.nextFeed) {
+      this.nextFeed = time + rand(12, 20);
+      if (alive < 4) {
+        let x = rand(W * 0.12, W * 0.88);
+        let y = rand(H * 0.15, H * 0.85);
+        if (this.clearCentre && Math.abs(x - W / 2) < W * 0.3 && Math.abs(y - H / 2) < H * 0.16) {
+          y = y < H / 2 ? H * rand(0.12, 0.3) : H * rand(0.7, 0.88);
+        }
+        if (this.contain) {
+          const m = Math.min(W, H) * 0.15;
+          x = clamp(x, m, W - m);
+          y = clamp(y, m, H - m);
+        }
+        this.scatter(x, y, randInt(3, 6));
+      }
+    }
+  }
+
+  private stepKoi(dt: number) {
+    const { koi, width: W, height: H, time } = this;
     const minSide = Math.min(W, H);
     const cxW = W / 2;
     const cyW = H / 2;
 
-    for (const sh of sharks) {
-      const L = sh.length;
-      const nodes = sh.nodes;
+    for (const k of koi) {
+      const L = k.length;
+      const nodes = k.nodes;
       const hx = nodes[0];
       const hy = nodes[1];
 
-      sh.hunger = Math.min(1, sh.hunger + dt * 0.03);
+      k.hunger = Math.min(1, k.hunger + dt * 0.04);
 
       // Momentum.
-      let dx = Math.cos(sh.heading);
-      let dy = Math.sin(sh.heading);
+      let dx = Math.cos(k.heading);
+      let dy = Math.sin(k.heading);
 
       // Wander: a slowly drifting offset on a circle ahead of the snout.
-      sh.wander = clamp(sh.wander + (Math.random() - 0.5) * dt * 3.2, -1.1, 1.1);
-      dx += Math.cos(sh.heading + sh.wander) * 0.45;
-      dy += Math.sin(sh.heading + sh.wander) * 0.45;
+      k.wander = clamp(k.wander + (Math.random() - 0.5) * dt * 3.6, -1.2, 1.2);
+      dx += Math.cos(k.heading + k.wander) * 0.5;
+      dy += Math.sin(k.heading + k.wander) * 0.5;
 
-      // Hunt.
-      if (time >= sh.retargetAt) {
-        sh.target = this.findPrey(sh);
-        sh.retargetAt = time + 0.45;
+      // Feed.
+      if (time >= k.retargetAt) {
+        k.target = this.findFood(k);
+        k.retargetAt = time + 0.5;
       }
-      const t = sh.target;
-      let hunting = false;
+      const t = k.target;
+      let feeding = false;
       let closing = 0;
-      if (t && t.alive && sh.hunger > 0.3) {
-        // Pursuit: aim at where the fish is about to be.
-        const tx = t.x + t.vx * 0.35 - hx;
-        const ty = t.y + t.vy * 0.35 - hy;
+      if (t && t.alive && k.hunger > 0.2) {
+        const tx = t.x - hx;
+        const ty = t.y - hy;
         const d = Math.hypot(tx, ty) || 1;
-        const w = 1.4 + 2.6 * sh.hunger;
+        const w = 1.2 + 2.2 * k.hunger;
         dx += (tx / d) * w;
         dy += (ty / d) * w;
-        hunting = true;
+        feeding = true;
         closing = clamp(1 - d / (L * 0.9), 0, 1);
       } else {
         // Patrol: a lazy circuit around the headline.
         const rx = (hx - cxW) / (W / minSide);
         const ry = hy - cyW;
         const r = Math.hypot(rx, ry) || 1;
-        const radius = sh.orbitRadius * (1 + 0.15 * Math.sin(time * 0.05 + sh.id));
+        const radius = k.orbitRadius * (1 + 0.15 * Math.sin(time * 0.05 + k.id));
         const radial = clamp((radius - r) / radius, -1, 1);
-        dx += ((-ry / r) * sh.orbitDir + (rx / r) * radial * 0.9) * 0.55;
-        dy += ((rx / r) * sh.orbitDir + (ry / r) * radial * 0.9) * 0.55;
+        dx += ((-ry / r) * k.orbitDir + (rx / r) * radial * 0.9) * 0.55;
+        dy += ((rx / r) * k.orbitDir + (ry / r) * radial * 0.9) * 0.55;
       }
 
-      // Give other sharks room.
-      for (const other of sharks) {
-        if (other === sh) continue;
-        for (let k = 0; k < SHARK_NODES; k += 4) {
-          const ox = hx - other.nodes[k * 2];
-          const oy = hy - other.nodes[k * 2 + 1];
+      // Give other koi room.
+      for (const other of koi) {
+        if (other === k) continue;
+        for (let j = 0; j < KOI_NODES; j += 4) {
+          const ox = hx - other.nodes[j * 2];
+          const oy = hy - other.nodes[j * 2 + 1];
           const d = Math.hypot(ox, oy);
-          const range = (L + other.length) * 0.45;
+          const range = (L + other.length) * 0.4;
           if (d < range && d > 1e-3) {
-            const w = (1 - d / range) * 3;
+            const w = (1 - d / range) * (feeding ? 1.5 : 3);
             dx += (ox / d) * w;
             dy += (oy / d) * w;
           }
@@ -569,7 +664,7 @@ export class World {
       const e2 = ex * ex + ey * ey;
       if (this.clearCentre && e2 < 1) {
         const e = Math.sqrt(e2) || 1e-3;
-        const w = (1 - e) * (hunting ? 1 : 2.5);
+        const w = (1 - e) * (feeding ? 1 : 2.5);
         dx += (ex / e) * w;
         dy += (ey / e) * w;
       }
@@ -577,17 +672,17 @@ export class World {
       const inset = this.insetFor(L);
       if (this.contain) {
         // Containment: the whole animal stays in frame. The body swings wide of the snout's path
-        // when the shark turns, so the distance to each wall is taken from whichever part of the
+        // when the koi turns, so the distance to each wall is taken from whichever part of the
         // spine is nearest it; steering away from the wall draws the body after the snout, harder
-        // the closer it gets, until the wall overrides the hunt.
+        // the closer it gets, until the wall overrides the food.
         const band = L * 0.65;
         let minX = hx;
         let maxX = hx;
         let minY = hy;
         let maxY = hy;
-        for (let k = 1; k < SHARK_NODES; k++) {
-          const x = nodes[k * 2];
-          const y = nodes[k * 2 + 1];
+        for (let j = 1; j < KOI_NODES; j++) {
+          const x = nodes[j * 2];
+          const y = nodes[j * 2 + 1];
           if (x < minX) minX = x;
           else if (x > maxX) maxX = x;
           if (y < minY) minY = y;
@@ -609,7 +704,7 @@ export class World {
         }
       } else {
         // Turn back once the snout leaves the frame, so bodies dip off-screen
-        // now and then but the sharks never wander away for good.
+        // now and then but the koi never wander away for good.
         const over = Math.max(-hx, hx - W, -hy, hy - H);
         if (over > -L * 0.05) {
           const w = clamp((over + L * 0.05) / (L * 0.35), 0, 1) * 3.5;
@@ -622,20 +717,21 @@ export class World {
       }
 
       const desired = Math.atan2(dy, dx);
-      // Sharks can't pivot on the spot: the turning circle grows with speed.
-      const agility = Math.min(hunting ? 1.7 + closing : 0.8, sh.speed / (L * 0.22));
+      // Koi turn tighter than their length suggests, but still can't pivot on the spot.
+      const agility = Math.min(feeding ? 1.1 + closing * 0.8 : 0.6, 0.25 + k.speed / (L * 0.16));
       const maxTurn = agility * dt;
-      const turned = clamp(angleDiff(sh.heading, desired), -maxTurn, maxTurn);
-      sh.heading += turned;
-      sh.turn += (turned / dt - sh.turn) * Math.min(1, dt * 3);
+      const turned = clamp(angleDiff(k.heading, desired), -maxTurn, maxTurn);
+      k.heading += turned;
+      k.turn += (turned / dt - k.turn) * Math.min(1, dt * 3);
 
-      const cruise = 30 + L * 0.04;
-      const targetSpeed = hunting ? cruise * (1.45 + closing * 1.5) : cruise;
-      sh.speed += (targetSpeed - sh.speed) * Math.min(1, dt * 1.1);
-      sh.phase += dt * (2 + sh.speed / 24);
+      // Cruise breathes between a slow glide and a few strong strokes, each koi on its own clock.
+      const cruise = (16 + L * 0.03) * (0.75 + 0.35 * Math.sin(time * 0.21 + k.id * 2.3) * Math.sin(time * 0.083 + k.id));
+      const targetSpeed = feeding ? (16 + L * 0.03) * (1.4 + closing * 0.3) : cruise;
+      k.speed += (targetSpeed - k.speed) * Math.min(1, dt * 0.9);
+      k.phase += dt * (1.4 + k.speed / 14);
 
-      nodes[0] += Math.cos(sh.heading) * sh.speed * dt;
-      nodes[1] += Math.sin(sh.heading) * sh.speed * dt;
+      nodes[0] += Math.cos(k.heading) * k.speed * dt;
+      nodes[1] += Math.sin(k.heading) * k.speed * dt;
       if (this.contain) {
         // The line itself, should steering not have been enough.
         nodes[0] = clamp(nodes[0], inset, W - inset);
@@ -643,34 +739,34 @@ export class World {
       }
 
       // Follow-the-leader spine, with a stiffness limit per joint so the
-      // body bends into a C at most and never folds back on itself.
-      const seg = L / (SHARK_NODES - 1);
-      const maxBend = 0.16;
-      let prevAngle = sh.heading + Math.PI;
-      for (let k = 1; k < SHARK_NODES; k++) {
-        const px = nodes[(k - 1) * 2];
-        const py = nodes[(k - 1) * 2 + 1];
-        let angle = Math.atan2(nodes[k * 2 + 1] - py, nodes[k * 2] - px);
+      // body bends into a C at most and never folds back on itself. A koi is
+      // stiff through the head and shoulders and supple toward the tail.
+      const seg = L / (KOI_NODES - 1);
+      let prevAngle = k.heading + Math.PI;
+      for (let j = 1; j < KOI_NODES; j++) {
+        const px = nodes[(j - 1) * 2];
+        const py = nodes[(j - 1) * 2 + 1];
+        let angle = Math.atan2(nodes[j * 2 + 1] - py, nodes[j * 2] - px);
+        const maxBend = 0.035 + 0.13 * (j / KOI_NODES);
         angle = prevAngle + clamp(angleDiff(prevAngle, angle), -maxBend, maxBend);
-        nodes[k * 2] = px + Math.cos(angle) * seg;
-        nodes[k * 2 + 1] = py + Math.sin(angle) * seg;
+        nodes[j * 2] = px + Math.cos(angle) * seg;
+        nodes[j * 2 + 1] = py + Math.sin(angle) * seg;
         prevAngle = angle;
       }
       // Last resort for a tail that swings past the line: slide the whole body in.
       if (this.contain) this.fitInFrame(nodes, inset);
 
-      // Feed.
-      if (sh.hunger > 0.15) {
-        const mouthR = L * 0.05 + 8;
+      // Gulp: any pellet at the mouth goes down, and the surface rings.
+      if (k.hunger > 0.05) {
+        const mouthR = L * 0.06 + 6;
         const mx = nodes[0];
         const my = nodes[1];
-        for (const f of this.fish) {
-          if (!f.alive) continue;
-          if ((f.x - mx) ** 2 + (f.y - my) ** 2 < mouthR * mouthR) {
-            f.alive = false;
-            f.respawnAt = time + rand(3, 8);
-            sh.hunger = Math.max(0, sh.hunger - 0.16);
-            this.events.push({ kind: "eat", x: f.x, y: f.y });
+        for (const p of this.pellets) {
+          if (!p.alive) continue;
+          if ((p.x - mx) ** 2 + (p.y - my) ** 2 < mouthR * mouthR) {
+            p.alive = false;
+            k.hunger = Math.max(0, k.hunger - 0.12);
+            this.events.push({ kind: "eat", x: p.x, y: p.y });
           }
         }
       }
@@ -678,70 +774,38 @@ export class World {
   }
 
   /**
-   * Pick prey in the shark's forward cone, preferring close fish in sparse
-   * buckets (stragglers) over fish buried in a dense school.
+   * Pick the pellet that is cheapest to reach: close, and ahead rather than behind,
+   * since turning round costs a koi more than swimming on.
    */
-  private findPrey(sh: Shark): Fish | null {
-    const range = sh.length * 0.9 + 160;
-    const hx = sh.nodes[0];
-    const hy = sh.nodes[1];
-    const fx = Math.cos(sh.heading);
-    const fy = Math.sin(sh.heading);
-    const inset = this.contain ? this.insetFor(sh.length) : 0;
-    let best: Fish | null = null;
+  private findFood(k: Koi): Pellet | null {
+    const range = k.length * 2.2 + 220;
+    const hx = k.nodes[0];
+    const hy = k.nodes[1];
+    const fx = Math.cos(k.heading);
+    const fy = Math.sin(k.heading);
+    const inset = this.contain ? this.insetFor(k.length) * 0.6 : 0;
+    let best: Pellet | null = null;
     let bestScore = Infinity;
     let currentScore = Infinity;
 
-    for (const f of this.fish) {
-      if (!f.alive) continue;
-      // A contained shark can't reach fish hugging the frame; don't let them pin it to the wall.
-      if (inset && (f.x < inset || f.x > this.width - inset || f.y < inset || f.y > this.height - inset)) continue;
-      const dx = f.x - hx;
-      const dy = f.y - hy;
+    for (const p of this.pellets) {
+      if (!p.alive) continue;
+      // A contained koi can't reach food hugging the frame; don't let it pin the koi to the wall.
+      if (inset && (p.x < inset || p.x > this.width - inset || p.y < inset || p.y > this.height - inset)) continue;
+      const dx = p.x - hx;
+      const dy = p.y - hy;
       const d = Math.hypot(dx, dy);
       if (d > range || d < 1e-3) continue;
       const cos = (dx * fx + dy * fy) / d;
-      if (cos < 0.2) continue;
-      const crowd = this.bucketCount[this.bucketOf(f.x, f.y)];
-      const score = d * (1 + (1 - cos) * 0.8) * (1 + crowd * 0.07);
+      const score = d * (1 + (1 - cos) * 0.9);
       if (score < bestScore) {
         bestScore = score;
-        best = f;
+        best = p;
       }
-      if (f === sh.target) currentScore = score;
+      if (p === k.target) currentScore = score;
     }
-    // Stick with the current target unless something is clearly better.
-    if (sh.target && currentScore < bestScore * 1.3) return sh.target;
+    // Stick with the current pellet unless something is clearly better.
+    if (k.target && currentScore < bestScore * 1.3) return k.target;
     return best;
-  }
-
-  private respawn() {
-    const { time, width: W, height: H } = this;
-    const due: Fish[] = [];
-    for (const f of this.fish) if (!f.alive && f.respawnAt <= time) due.push(f);
-    if (due.length === 0) return;
-    if (due.length < 6 && time - this.lastSpawn < 9) return;
-    this.lastSpawn = time;
-
-    // A new school swims in from a random edge.
-    const side = randInt(0, 3);
-    const along = rand(0.15, 0.85);
-    const x = side === 0 ? -20 : side === 1 ? W + 20 : along * W;
-    const y = side === 2 ? -20 : side === 3 ? H + 20 : along * H;
-    const inward = Math.atan2(H / 2 - y, W / 2 - x) + rand(-0.5, 0.5);
-    const species = pickSpecies();
-    const sp = SPECIES[species];
-    const millDir: 1 | -1 = Math.random() < 0.5 ? 1 : -1;
-    for (const f of due.slice(0, sp.schoolSize[1])) {
-      f.alive = true;
-      f.species = species;
-      f.alarm = 0;
-      f.turn = 0;
-      f.millDir = millDir;
-      f.x = x + rand(-1, 1) * this.perception;
-      f.y = y + rand(-1, 1) * this.perception;
-      f.vx = Math.cos(inward) * sp.cruise * 1.4;
-      f.vy = Math.sin(inward) * sp.cruise * 1.4;
-    }
   }
 }

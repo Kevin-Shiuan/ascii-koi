@@ -3,7 +3,7 @@
  * borders, so gliders leave the frame and are gone. Cells remember their
  * age, so still lifes can be drawn as ash while movers stay bright.
  *
- * Two bridges to the rest of the sim: cells under a shark die, and when
+ * Two bridges to the rest of the sim: cells under a koi die, and when
  * `sowing` is on, cells are born where the wake field runs hot. The
  * continuous automaton feeds the discrete one.
  */
@@ -85,7 +85,7 @@ export class Life {
     return n;
   }
 
-  /** Advance by wall time. `occupied` marks cells under sharks; `field` is the wake. */
+  /** Advance by wall time. `occupied` marks cells under koi; `field` is the wake. */
   step(dt: number, occupied: Uint8Array | null, field: Float32Array | null) {
     this.acc += dt;
     const period = 1 / this.rate;
